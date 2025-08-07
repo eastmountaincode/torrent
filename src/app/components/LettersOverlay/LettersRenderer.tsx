@@ -13,7 +13,7 @@ export interface Letter {
 // Rendering-only constants (tweak as you like)
 const FONT_SIZE   = 40;
 const SHOW_HITBOX = false;
-const LETTER_TTL  = 4_000;   // ms each letter lives
+const LETTER_DURATION  = 4_000;   // ms each letter lives
 
 interface Props {
   letters: Letter[];                 // provided by parent
@@ -61,7 +61,7 @@ export default function LettersRenderer({
         const ltr = letters[i];
 
         // remove expired letters (parent may also prune if desired)
-        if (now - ltr.createdAt > LETTER_TTL) {
+        if (now - ltr.createdAt > LETTER_DURATION) {
           letters.splice(i, 1);
           continue;
         }
