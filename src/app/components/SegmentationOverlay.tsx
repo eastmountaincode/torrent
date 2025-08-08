@@ -7,17 +7,25 @@ import { useEffect, useRef } from "react";
 async function initSegmenter() {
     const { SupportedModels, createSegmenter } = window.bodySegmentation;
     const model = SupportedModels.BodyPix;
+    // For performance, consider MobileNetV1 with lower multiplier.
+    // ResNet50 is higher quality but heavier.
     const segmenterConfig = {
-        architecture: "ResNet50",
+        architecture: "MobileNetV1",
         outputStride: 16,
-        multiplier: 1,
+        multiplier: 0.75,
         quantBytes: 4,
-    };
+    } as const;
     return await createSegmenter(model, segmenterConfig);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function drawMask(people: any, canvasEl: HTMLCanvasElement, onUpdateMask: (mask: ImageData | null) => void) {
+async function drawMask(
+    people: any,
+    canvasEl: HTMLCanvasElement,
+    offscreen: HTMLCanvasElement,
+    offCtx: CanvasRenderingContext2D,
+    onUpdateMask: (mask: ImageData | null) => void
+) {
     if (!people || !canvasEl) return;
 
     const red = { r: 255, g: 0, b: 255, a: 1 };
@@ -29,13 +37,18 @@ async function drawMask(people: any, canvasEl: HTMLCanvasElement, onUpdateMask: 
         transparent
     );
 
-    const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width = canvasEl.width;
-    tmpCanvas.height = canvasEl.height;
-    const tmpCtx = tmpCanvas.getContext('2d');
-    if (tmpCtx) {
-        tmpCtx.putImageData(binaryMask, 0, 0);
+    // Draw into a reusable offscreen canvas sized to the mask, then mirror-scale onto the visible canvas
+    const maskW = binaryMask.width;
+    const maskH = binaryMask.height;
+    if (maskW === 0 || maskH === 0) {
+        onUpdateMask(null);
+        return;
     }
+    if (offscreen.width !== maskW || offscreen.height !== maskH) {
+        offscreen.width = maskW;
+        offscreen.height = maskH;
+    }
+    offCtx.putImageData(binaryMask, 0, 0);
 
     const ctx = canvasEl.getContext('2d');
     if (ctx) {
@@ -43,7 +56,8 @@ async function drawMask(people: any, canvasEl: HTMLCanvasElement, onUpdateMask: 
         ctx.save();
         ctx.translate(canvasEl.width, 0);
         ctx.scale(-1, 1);
-        ctx.drawImage(tmpCanvas, 0, 0);
+        // scale mask to canvas size if needed
+        ctx.drawImage(offscreen, 0, 0, maskW, maskH, 0, 0, canvasEl.width, canvasEl.height);
         ctx.restore();
         onUpdateMask(ctx.getImageData(0, 0, canvasEl.width, canvasEl.height));
 
@@ -55,21 +69,43 @@ async function runSegmentationLoop(
     segmenter: any,
     videoEl: HTMLVideoElement,
     canvasEl: HTMLCanvasElement,
+    offscreen: HTMLCanvasElement,
+    offCtx: CanvasRenderingContext2D,
     stopFlag: { current: boolean },
     onUpdateMask: (mask: ImageData | null) => void
 ) {
     if (!segmenter || !videoEl || !canvasEl || stopFlag.current) return;
 
-    const segmentationConfig = { multiSegmentation: false, segmentBodyParts: false };
-    const people = await segmenter.segmentPeople(videoEl, segmentationConfig);
-    if (people.length > 0) {
-        await drawMask(people, canvasEl, onUpdateMask);
-    } else {
-        // Optionally, clear canvas if no person
+    // Guard against zero-size video frames which can cause 0x0 texture errors
+    if (videoEl.videoWidth === 0 || videoEl.videoHeight === 0) {
         const ctx = canvasEl.getContext('2d');
-        ctx && ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+        if (ctx) ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+        onUpdateMask(null);
+        requestAnimationFrame(() => runSegmentationLoop(segmenter, videoEl, canvasEl, offscreen, offCtx, stopFlag, onUpdateMask));
+        return;
     }
-    requestAnimationFrame(() => runSegmentationLoop(segmenter, videoEl, canvasEl, stopFlag, onUpdateMask));
+
+    try {
+        const segmentationConfig = { multiSegmentation: false, segmentBodyParts: false } as const;
+        const people = await segmenter.segmentPeople(videoEl, segmentationConfig);
+        if (people.length > 0) {
+            await drawMask(people, canvasEl, offscreen, offCtx, onUpdateMask);
+        } else {
+            // Optionally, clear canvas if no person
+            const ctx = canvasEl.getContext('2d');
+            if (ctx) {
+                ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+            }
+            onUpdateMask(null);
+        }
+    } catch (e) {
+        // On any segmentation error, clear and continue
+        const ctx = canvasEl.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+        onUpdateMask(null);
+    }
+
+    requestAnimationFrame(() => runSegmentationLoop(segmenter, videoEl, canvasEl, offscreen, offCtx, stopFlag, onUpdateMask));
 }
 ////////////////////////////////////////////////////////////////
 
@@ -85,6 +121,8 @@ export function SegmentationOverlay({
     onUpdateMask: (mask: ImageData | null) => void;
 }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const offscreenRef = useRef<HTMLCanvasElement | null>(null);
+    const offCtxRef = useRef<CanvasRenderingContext2D | null>(null);
 
     useEffect(() => {
         let segmenter: any = null;
@@ -102,9 +140,28 @@ export function SegmentationOverlay({
             ) {
                 await new Promise((res) => setTimeout(res, 100));
             }
+            // Ensure we have an offscreen canvas/context to reuse
+            if (!offscreenRef.current) {
+                offscreenRef.current = document.createElement('canvas');
+                offCtxRef.current = offscreenRef.current.getContext('2d');
+            }
+            // Wait until the video has valid dimensions to avoid 0x0 textures
+            while (videoRef.current && (videoRef.current.videoWidth === 0 || videoRef.current.videoHeight === 0)) {
+                await new Promise((res) => setTimeout(res, 50));
+            }
             // Once we have all these things, initialize the segmenter
             segmenter = await initSegmenter();
-            runSegmentationLoop(segmenter, videoRef.current, canvasRef.current, stopFlag, onUpdateMask);
+            if (offscreenRef.current && offCtxRef.current) {
+                runSegmentationLoop(
+                    segmenter,
+                    videoRef.current,
+                    canvasRef.current,
+                    offscreenRef.current,
+                    offCtxRef.current,
+                    stopFlag,
+                    onUpdateMask
+                );
+            }
         }
 
         // I used a console.log to verify that we're not calling setup() repeatedly

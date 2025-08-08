@@ -4,25 +4,32 @@ import { useRedditTitles } from "@/app/hooks/useRedditTitles";
 import LetterSpawner from "./LetterSpawner";
 import { Letter } from "@/app/types";
 
-const MAX_QUEUE_LENGTH = 200;
+const MAX_QUEUE_LENGTH = 300;
 const MAX_SEEN_LENGTH = MAX_QUEUE_LENGTH * 3;
 
-const LETTERS_PER_SECOND = 5;
-const LETTER_FALL_SPEED = 3;
+const LETTERS_PER_SECOND = 1000; // overall emission rate (letters/second)
+const LETTER_FALL_SPEED_MIN = 8;
+const LETTER_FALL_SPEED_MAX = 11;
 const LETTER_FONT_SIZE = 40;
-const LETTER_SPAWN_INTERVAL = 100;
+const LETTER_FONT_FAMILY = '"Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+const LETTER_FONT_COLOR = "#000000"; // canvas fillStyle-compatible color
+const LETTER_DURATION_MS = 1500; // ms each letter lives
+const MAX_RESOLVE_STEPS = 12; // cap how many pixels we push up to escape mask
+const SHOW_HITBOX = false;
 
 
 export default function LettersOverlay({
     width,
     height,
     segmentationMask,
-    spawnLetters
+    spawnLetters,
+    onQueueLengthChange
 }: {
     width: number;
     height: number;
     segmentationMask: ImageData | null;
     spawnLetters: boolean;
+    onQueueLengthChange: (n: number) => void;
 }) {
 
     // fetchedTitles holds the latest output from the titles API
@@ -42,6 +49,11 @@ export default function LettersOverlay({
     function removeTitle(idx: number) {
         setTitlesQueue(prev => prev.filter((_, i) => i !== idx));
     }
+
+    // After every update to titlesQueue, report length
+    useEffect(() => {
+        if (onQueueLengthChange) onQueueLengthChange(titlesQueue.length);
+    }, [titlesQueue, onQueueLengthChange]);
 
     // On every fetch, filter out already-seen titles and update queue and seen
     useEffect(() => {
@@ -71,19 +83,27 @@ export default function LettersOverlay({
         <>
         <LetterSpawner
             titlesQueue={titlesQueue}
+            removeTitle={removeTitle}
             lettersRef={lettersRef}
             spawnLetters={spawnLetters}
             width={width}
             fontSize={LETTER_FONT_SIZE}
-            letterFallSpeed={LETTER_FALL_SPEED}
+            fontFamily={LETTER_FONT_FAMILY}
+            letterFallSpeedMin={LETTER_FALL_SPEED_MIN}
+            letterFallSpeedMax={LETTER_FALL_SPEED_MAX}
             lettersPerSecond={LETTERS_PER_SECOND}
-            letterSpawnInterval={LETTER_SPAWN_INTERVAL}
         />
         <LettersRenderer
             letters={lettersRef.current}
             width={width}
             height={height}
             segmentationMask={segmentationMask}
+            fontSize={LETTER_FONT_SIZE}
+            fontFamily={LETTER_FONT_FAMILY}
+            fontColor={LETTER_FONT_COLOR}
+            showHitbox={SHOW_HITBOX}
+            letterDurationMs={LETTER_DURATION_MS}
+            maxResolveSteps={MAX_RESOLVE_STEPS}
         />
         </>
     );

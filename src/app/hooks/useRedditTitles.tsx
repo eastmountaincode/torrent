@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-const POLL_INTERVAL = 3000;
+const POLL_INTERVAL = 2000;
 const API_KEY = process.env.NEXT_PUBLIC_TITLES_API_KEY;
 const API_URL = process.env.NEXT_PUBLIC_TITLES_API_URL;
 

@@ -5,4 +5,5 @@ export interface Letter {
     width: number;
     createdAt: number;
     speed: number;
+    color?: string;
 }

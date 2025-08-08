@@ -15,6 +15,9 @@ export default function VideoDisplay() {
 
     const [spawnLetters, setSpawnLetters] = useState(false);
 
+    const [queueLength, setQueueLength] = useState(0);
+
+
 
     return (
         <div className="flex flex-col items-center">
@@ -43,7 +46,10 @@ export default function VideoDisplay() {
                     height={height}
                     segmentationMask={segmentationMask}
                     spawnLetters={spawnLetters}
+                    onQueueLengthChange={setQueueLength}
                 />
+                <div className="mt-2 text-white">Titles in queue: {queueLength}</div>
+
             </div>
         </div>
 
