@@ -70,12 +70,19 @@ export default function LetterSpawner({
     // Use Intl.Segmenter if available for proper grapheme clustering; otherwise fallback
     // to a basic code point split which handles surrogates but not complex ZWJ sequences.
     try {
-      const seg = (Intl as any).Segmenter
-        ? new (Intl as any).Segmenter(undefined, { granularity: "grapheme" })
-        : null;
+      type Segment = { segment: string };
+      type Segmenter = { segment: (input: string) => Iterable<Segment> };
+      type SegmenterCtor = new (
+        locales?: string | string[] | undefined,
+        options?: { granularity: "grapheme" | "word" | "sentence" }
+      ) => Segmenter;
+      const intlWithSeg = Intl as unknown as { Segmenter?: SegmenterCtor };
+      const Ctor = intlWithSeg.Segmenter;
+      const seg = Ctor ? new Ctor(undefined, { granularity: "grapheme" }) : null;
       if (seg) {
-        const segments = seg.segment(input);
-        return Array.from(segments, (s: any) => s.segment as string);
+        const out: string[] = [];
+        for (const s of seg.segment(input)) out.push(s.segment);
+        return out;
       }
       return Array.from(input);
     } catch {
@@ -90,7 +97,7 @@ export default function LetterSpawner({
     if (!measureCtx.current) {
       const off = document.createElement("canvas");
       measureCtx.current = off.getContext("2d");
-      measureCtx.current!.font = `${fontSize}px monospace`;
+      measureCtx.current!.font = `bold ${fontSize}px ${fontFamily}`;
     }
 
     let rafId: number | null = null;
@@ -141,7 +148,7 @@ export default function LetterSpawner({
           type Line = { tokens: { text: string; width: number; isSpace: boolean }[]; width: number };
           const lines: Line[] = [];
           let current: Line = { tokens: [], width: 0 };
-          for (let t of tokens) {
+          for (const t of tokens) {
             const isSpace = /^\s+$/.test(t);
             // Skip leading spaces on a line
             if (isSpace && current.tokens.length === 0) continue;

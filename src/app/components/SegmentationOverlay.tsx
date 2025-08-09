@@ -2,9 +2,18 @@
 
 import { useEffect, useRef } from "react";
 
+// Minimal runtime types for the CDN-loaded body segmentation API
+type Segmenter = {
+    segmentPeople: (
+        video: HTMLVideoElement,
+        options: { multiSegmentation: boolean; segmentBodyParts: boolean }
+    ) => Promise<unknown[]>;
+    dispose?: () => void;
+};
+
 // FUNCTIONS /////////////////////////////////////////////////
 // Initialize the segmenter
-async function initSegmenter() {
+async function initSegmenter(): Promise<Segmenter> {
     const { SupportedModels, createSegmenter } = window.bodySegmentation;
     const model = SupportedModels.BodyPix;
     // For performance, consider MobileNetV1 with lower multiplier.
@@ -15,12 +24,11 @@ async function initSegmenter() {
         multiplier: 0.75,
         quantBytes: 4,
     } as const;
-    return await createSegmenter(model, segmenterConfig);
+    return (await createSegmenter(model, segmenterConfig)) as unknown as Segmenter;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function drawMask(
-    people: any,
+    people: unknown,
     canvasEl: HTMLCanvasElement,
     offscreen: HTMLCanvasElement,
     offCtx: CanvasRenderingContext2D,
@@ -31,11 +39,11 @@ async function drawMask(
     const red = { r: 255, g: 0, b: 255, a: 1 };
     const transparent = { r: 0, g: 0, b: 0, a: 0 };
 
-    const binaryMask = await window.bodySegmentation.toBinaryMask(
+    const binaryMask = (await window.bodySegmentation.toBinaryMask(
         people,
         red,
         transparent
-    );
+    )) as ImageData;
 
     // Draw into a reusable offscreen canvas sized to the mask, then mirror-scale onto the visible canvas
     const maskW = binaryMask.width;
@@ -66,7 +74,7 @@ async function drawMask(
 
 
 async function runSegmentationLoop(
-    segmenter: any,
+    segmenter: Segmenter,
     videoEl: HTMLVideoElement,
     canvasEl: HTMLCanvasElement,
     offscreen: HTMLCanvasElement,
@@ -98,7 +106,7 @@ async function runSegmentationLoop(
             }
             onUpdateMask(null);
         }
-    } catch (e) {
+    } catch {
         // On any segmentation error, clear and continue
         const ctx = canvasEl.getContext('2d');
         if (ctx) ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
@@ -125,7 +133,7 @@ export function SegmentationOverlay({
     const offCtxRef = useRef<CanvasRenderingContext2D | null>(null);
 
     useEffect(() => {
-        let segmenter: any = null;
+        let segmenter: Segmenter | null = null;
         const stopFlag = { current: false };
 
         async function setup() {
@@ -153,7 +161,7 @@ export function SegmentationOverlay({
             segmenter = await initSegmenter();
             if (offscreenRef.current && offCtxRef.current) {
                 runSegmentationLoop(
-                    segmenter,
+                    segmenter as Segmenter,
                     videoRef.current,
                     canvasRef.current,
                     offscreenRef.current,
