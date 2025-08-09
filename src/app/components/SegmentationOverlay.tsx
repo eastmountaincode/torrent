@@ -179,7 +179,7 @@ export function SegmentationOverlay({
             ref={canvasRef}
             width={width}
             height={height}
-            className="absolute inset-0 pointer-events-none border border-1 border-white"
+            className="absolute inset-0 pointer-events-none"
         />
     );
 }

@@ -7,14 +7,14 @@ import { Letter } from "@/app/types";
 const MAX_QUEUE_LENGTH = 300;
 const MAX_SEEN_LENGTH = MAX_QUEUE_LENGTH * 3;
 
-const LETTERS_PER_SECOND = 1000; // overall emission rate (letters/second)
-const LETTER_FALL_SPEED_MIN = 8;
-const LETTER_FALL_SPEED_MAX = 11;
-const LETTER_FONT_SIZE = 40;
-const LETTER_FONT_FAMILY = '"Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+const LETTERS_PER_SECOND = 800; // overall emission rate (letters/second)
+const LETTER_FALL_SPEED_MIN = 3;
+const LETTER_FALL_SPEED_MAX = 5;
+const LETTER_FONT_SIZE = 50;
+const LETTER_FONT_FAMILY = '"ChicagoKare", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Noto Sans CJK JP", "Noto Sans CJK KR", "Noto Sans CJK SC", "Noto Sans Arabic", "Noto Sans", sans-serif';
 const LETTER_FONT_COLOR = "#000000"; // canvas fillStyle-compatible color
-const LETTER_DURATION_MS = 1500; // ms each letter lives
-const MAX_RESOLVE_STEPS = 12; // cap how many pixels we push up to escape mask
+const LETTER_DURATION_MS = 5500; // ms each letter lives
+const MAX_RESOLVE_STEPS = 14; // cap how many pixels we push up to escape mask
 const SHOW_HITBOX = false;
 
 

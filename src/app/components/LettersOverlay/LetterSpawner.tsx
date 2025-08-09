@@ -129,7 +129,7 @@ export default function LetterSpawner({
           currentTitleRemainingIdxs.current = [];
           continue;
         }
-        ctx.font = `${fontSize}px ${fontFamily}`;
+        ctx.font = `bold ${fontSize}px ${fontFamily}`;
 
         // If starting a new title or finished previous, precompute layout
         if (letterIdx.current === 0 && currentTitleRemainingIdxs.current.length === 0) {
@@ -243,6 +243,8 @@ export default function LetterSpawner({
           createdAt,
           speed,
           color: currentTitleColor.current,
+          vx: 0,
+          vy: 0,
         });
 
         letterIdx.current += 1;

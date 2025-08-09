@@ -6,4 +6,6 @@ export interface Letter {
     createdAt: number;
     speed: number;
     color?: string;
+    vx?: number; // horizontal velocity (px/frame)
+    vy?: number; // vertical velocity (px/frame)
 }

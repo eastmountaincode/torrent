@@ -21,7 +21,7 @@ export const VideoFeed = forwardRef<HTMLVideoElement, { width: number; height: n
     return (
         <video
             ref={ref}
-            className="w-full h-full object-cover -scale-x-100 border border-3 border-green-500"
+            className="w-full h-full object-cover -scale-x-100"
             autoPlay
             muted
             playsInline
