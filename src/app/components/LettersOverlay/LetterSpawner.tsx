@@ -42,28 +42,25 @@ export default function LetterSpawner({
   const MAX_GRAPHEMES_PER_TITLE = 4000;
   const currentTitleColor = useRef<string>("#000000");
 
-  function randomReadableColor() {
-    // prefer bright but not pure white; HSV with high V and moderate S
-    const h = Math.floor(Math.random() * 360);
-    const s = 60 + Math.floor(Math.random() * 30); // 60-90%
-    const v = 70 + Math.floor(Math.random() * 30); // 70-100%
-    // convert HSV->RGB quickly
-    const sv = s / 100;
-    const vv = v / 100;
-    const c = vv * sv;
-    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-    const m = vv - c;
-    let r = 0, g = 0, b = 0;
-    if (h < 60) { r = c; g = x; b = 0; }
-    else if (h < 120) { r = x; g = c; b = 0; }
-    else if (h < 180) { r = 0; g = c; b = x; }
-    else if (h < 240) { r = 0; g = x; b = c; }
-    else if (h < 300) { r = x; g = 0; b = c; }
-    else { r = c; g = 0; b = x; }
-    const R = Math.round((r + m) * 255);
-    const G = Math.round((g + m) * 255);
-    const B = Math.round((b + m) * 255);
-    return `rgb(${R}, ${G}, ${B})`;
+  function clampByte(value: number): number {
+    return Math.max(0, Math.min(255, Math.round(value)));
+  }
+
+  function generateRainGrayColor(): string {
+    // Gray values in a safe mid-range: avoid near-black and near-white.
+    // Tweak these bounds to make the rain darker or lighter.
+    const minGray = 60;   // 0 is black
+    const maxGray = 210;  // 255 is white
+    const base = Math.floor(minGray + Math.random() * (maxGray - minGray));
+
+    // Add a tiny independent jitter per channel to keep very low saturation
+    // instead of a perfectly neutral gray, which reads a bit lifeless.
+    const jitterRange = 12; // ±6 variation
+    const jitter = () => (Math.random() - 0.5) * jitterRange;
+    const r = clampByte(base + jitter());
+    const g = clampByte(base + jitter());
+    const b = clampByte(base + jitter());
+    return `rgb(${r}, ${g}, ${b})`;
   }
 
   function splitGraphemes(input: string): string[] {
@@ -198,7 +195,7 @@ export default function LetterSpawner({
           currentTitleTotalWidth.current = width; // not used anymore but keep populated
           currentTitleStartLeft.current = 0;
           currentTitleRemainingIdxs.current = Array.from({ length: graphemes.length }, (_, k) => k);
-          currentTitleColor.current = randomReadableColor();
+          currentTitleColor.current = generateRainGrayColor();
         }
 
         // If nothing remains for this title, finalize and move on
