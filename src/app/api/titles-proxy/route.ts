@@ -22,8 +22,13 @@ export async function GET() {
     } catch {
       return NextResponse.json({ titles: [] }, { status: 502 });
     }
-    const titles = Array.isArray((json as any)?.titles)
-      ? (json as any).titles.filter((t: unknown) => typeof t === "string" && t.length > 0)
+    // Safely extract and validate titles
+    let titlesUnknown: unknown = undefined;
+    if (json && typeof json === 'object' && 'titles' in (json as Record<string, unknown>)) {
+      titlesUnknown = (json as Record<string, unknown>).titles;
+    }
+    const titles = Array.isArray(titlesUnknown)
+      ? (titlesUnknown as unknown[]).filter((t): t is string => typeof t === 'string' && t.length > 0)
       : [];
     return NextResponse.json({ titles }, { status: 200 });
   } catch {
