@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { VideoFeed } from "./VideoFeed";
 import { SegmentationOverlay } from "./SegmentationOverlay";
 import LettersOverlay from "./LettersOverlay/LettersOverlay";
-import { RedditTitlesFeed } from "./RedditTitlesFeed";
 
 export default function VideoDisplay() {
     // this is the actual video content we're getting from the camera
@@ -64,7 +63,7 @@ export default function VideoDisplay() {
 
     const [segmentationMask, setSegmentationMask] = useState<ImageData | null>(null);
 
-    const [spawnLetters, setSpawnLetters] = useState(true);
+    const [spawnLetters, _] = useState(true);
 
     const [queueLength, setQueueLength] = useState(0);
 
