@@ -12,6 +12,9 @@ interface LetterSpawnerProps {
   letterFallSpeedMin: number;
   letterFallSpeedMax: number;
   lettersPerSecond: number; // overall emission rate
+  maxActiveLetters: number;
+  fallSpeedMultiplier: number;
+  onFirstLetterSpawned?: () => void;
 }
 
 export default function LetterSpawner({
@@ -25,6 +28,9 @@ export default function LetterSpawner({
   letterFallSpeedMin,
   letterFallSpeedMax,
   lettersPerSecond,
+  maxActiveLetters,
+  fallSpeedMultiplier,
+  onFirstLetterSpawned,
 }: LetterSpawnerProps) {
   const MAX_EMIT_PER_FRAME = 16; // cap to prevent bursty spawns on slow frames
   // offscreen canvas for accurate text measurement
@@ -41,6 +47,7 @@ export default function LetterSpawner({
   const currentTitleGraphemes = useRef<string[]>([]);
   const MAX_GRAPHEMES_PER_TITLE = 4000;
   const currentTitleColor = useRef<string>("#000000");
+  const reportedFirstLetter = useRef(false);
 
   function clampByte(value: number): number {
     return Math.max(0, Math.min(255, Math.round(value)));
@@ -118,6 +125,11 @@ export default function LetterSpawner({
       if (!ctx) return;
 
       for (let i = 0; i < emitCount; i++) {
+        if (lettersRef.current.length >= maxActiveLetters) {
+          const overflow = lettersRef.current.length - maxActiveLetters + 1;
+          lettersRef.current.splice(0, overflow);
+        }
+
         // Get the current title and letter index
         const title = titlesQueue[titleIdx.current];
         if (!title) return; // nothing to show
@@ -238,7 +250,7 @@ export default function LetterSpawner({
         // pick a random speed within the configured range (order-agnostic)
         const sMin = Math.min(letterFallSpeedMin, letterFallSpeedMax);
         const sMax = Math.max(letterFallSpeedMin, letterFallSpeedMax);
-        const speed = sMin + Math.random() * Math.max(0, sMax - sMin);
+        const speed = (sMin + Math.random() * Math.max(0, sMax - sMin)) * fallSpeedMultiplier;
         lettersRef.current.push({
           char: char ?? "",
           x: xCenter,
@@ -250,6 +262,10 @@ export default function LetterSpawner({
           vx: 0,
           vy: 0,
         });
+        if (!reportedFirstLetter.current) {
+          reportedFirstLetter.current = true;
+          onFirstLetterSpawned?.();
+        }
 
         letterIdx.current += 1;
 
@@ -281,7 +297,10 @@ export default function LetterSpawner({
     letterFallSpeedMin,
     letterFallSpeedMax,
     lettersPerSecond,
+    maxActiveLetters,
+    fallSpeedMultiplier,
     lettersRef,
+    onFirstLetterSpawned,
   ]);
 
   return null; // nothing to render

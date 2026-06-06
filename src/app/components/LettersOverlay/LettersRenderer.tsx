@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { Letter } from "@/app/types/index";
+import { Letter, LetterFrameMetrics } from "@/app/types/index";
 
 interface Props {
   letters: Letter[];                 // provided by parent
@@ -13,6 +13,7 @@ interface Props {
   showHitbox: boolean;
   letterDurationMs: number;
   maxResolveSteps: number;
+  onFrameMetrics?: (metrics: LetterFrameMetrics) => void;
 }
 
 export default function LettersRenderer({
@@ -26,6 +27,7 @@ export default function LettersRenderer({
   showHitbox,
   letterDurationMs,
   maxResolveSteps,
+  onFrameMetrics,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const maskRef = useRef<ImageData | null>(null);
@@ -150,6 +152,7 @@ export default function LettersRenderer({
     }
 
     const draw = () => {
+      const drawStartedAt = performance.now();
       ctx.clearRect(0, 0, width, height);
       const now = Date.now();
 
@@ -281,12 +284,17 @@ export default function LettersRenderer({
         }
       }
 
+      onFrameMetrics?.({
+        activeLetters: list.length,
+        drawMs: performance.now() - drawStartedAt,
+      });
+
       rafId = requestAnimationFrame(draw);
     };
 
     draw();
     return () => cancelAnimationFrame(rafId);
-  }, [width, height]);
+  }, [width, height, onFrameMetrics]);
 
   return (
     <canvas

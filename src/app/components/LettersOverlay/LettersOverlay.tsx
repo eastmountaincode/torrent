@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import LettersRenderer from "./LettersRenderer";
-import { useRedditTitles } from "@/app/hooks/useRedditTitles";
+import { useRedditTitlesState } from "@/app/hooks/useRedditTitles";
 import LetterSpawner from "./LetterSpawner";
-import { Letter } from "@/app/types";
+import { Letter, LetterFrameMetrics, TitlesStatus } from "@/app/types";
 
 const MAX_QUEUE_LENGTH = 300;
 const MAX_SEEN_LENGTH = MAX_QUEUE_LENGTH * 3;
@@ -23,17 +23,27 @@ export default function LettersOverlay({
     height,
     segmentationMask,
     spawnLetters,
-    onQueueLengthChange
+    maxActiveLetters,
+    fallSpeedMultiplier,
+    onQueueLengthChange,
+    onTitlesStatusChange,
+    onFirstLetterSpawned,
+    onFrameMetrics
 }: {
     width: number;
     height: number;
     segmentationMask: ImageData | null;
     spawnLetters: boolean;
+    maxActiveLetters: number;
+    fallSpeedMultiplier: number;
     onQueueLengthChange: (n: number) => void;
+    onTitlesStatusChange?: (status: TitlesStatus) => void;
+    onFirstLetterSpawned?: () => void;
+    onFrameMetrics?: (metrics: LetterFrameMetrics) => void;
 }) {
 
     // fetchedTitles holds the latest output from the titles API
-    const fetchedTitles = useRedditTitles();
+    const { titles: fetchedTitles, status: titlesStatus } = useRedditTitlesState();
 
     // titlesQueue stores the list of titles waiting to be used. 
     // Only new (unseen) titles are added, ensuring no duplicates, and old ones are pruned to stay within MAX_QUEUE_LENGTH.
@@ -54,6 +64,10 @@ export default function LettersOverlay({
     useEffect(() => {
         if (onQueueLengthChange) onQueueLengthChange(titlesQueue.length);
     }, [titlesQueue, onQueueLengthChange]);
+
+    useEffect(() => {
+        onTitlesStatusChange?.(titlesStatus);
+    }, [titlesStatus, onTitlesStatusChange]);
 
     // On every fetch, filter out already-seen titles and update queue and seen
     useEffect(() => {
@@ -92,6 +106,9 @@ export default function LettersOverlay({
             letterFallSpeedMin={LETTER_FALL_SPEED_MIN}
             letterFallSpeedMax={LETTER_FALL_SPEED_MAX}
             lettersPerSecond={LETTERS_PER_SECOND}
+            maxActiveLetters={maxActiveLetters}
+            fallSpeedMultiplier={fallSpeedMultiplier}
+            onFirstLetterSpawned={onFirstLetterSpawned}
         />
         <LettersRenderer
             letters={lettersRef.current}
@@ -104,6 +121,7 @@ export default function LettersOverlay({
             showHitbox={SHOW_HITBOX}
             letterDurationMs={LETTER_DURATION_MS}
             maxResolveSteps={MAX_RESOLVE_STEPS}
+            onFrameMetrics={onFrameMetrics}
         />
         </>
     );

@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-    title: "BlazePost Test",
-    description: "BlazePost Test",
+    title: "Torrent",
+    description: "Torrent",
 };
 
 export default function RootLayout({

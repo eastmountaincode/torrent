@@ -1,6 +1,11 @@
 "use client"
 
 import { useEffect, useRef } from "react";
+import { BodyPixSettings, SegmentationFrameMetrics, SegmentationStatus } from "../types";
+
+const SEGMENTATION_SETUP_TIMEOUT_MS = 45000;
+const SEGMENTATION_RETRY_BASE_MS = 1000;
+const SEGMENTATION_RETRY_MAX_MS = 10000;
 
 // Minimal runtime types for the CDN-loaded body segmentation API
 type Segmenter = {
@@ -13,15 +18,15 @@ type Segmenter = {
 
 // FUNCTIONS /////////////////////////////////////////////////
 // Initialize the segmenter
-async function initSegmenter(): Promise<Segmenter> {
+async function initSegmenter(settings: BodyPixSettings): Promise<Segmenter> {
     const { SupportedModels, createSegmenter } = window.bodySegmentation;
     const model = SupportedModels.BodyPix;
     // For performance, consider MobileNetV1 with lower multiplier.
     // ResNet50 is higher quality but heavier.
     const segmenterConfig = {
         architecture: "MobileNetV1",
-        outputStride: 16,
-        multiplier: 0.75,
+        outputStride: settings.outputStride,
+        multiplier: settings.multiplier,
         quantBytes: 4,
     } as const;
     return (await createSegmenter(model, segmenterConfig)) as unknown as Segmenter;
@@ -36,12 +41,12 @@ async function drawMask(
 ) {
     if (!people || !canvasEl) return;
 
-    const red = { r: 255, g: 0, b: 255, a: 1 };
+    const maskColor = { r: 0, g: 220, b: 255, a: 255 };
     const transparent = { r: 0, g: 0, b: 0, a: 0 };
 
     const binaryMask = (await window.bodySegmentation.toBinaryMask(
         people,
-        red,
+        maskColor,
         transparent
     )) as ImageData;
 
@@ -80,7 +85,8 @@ async function runSegmentationLoop(
     offscreen: HTMLCanvasElement,
     offCtx: CanvasRenderingContext2D,
     stopFlag: { current: boolean },
-    onUpdateMask: (mask: ImageData | null) => void
+    onUpdateMask: (mask: ImageData | null) => void,
+    onFrameMetrics?: (metrics: SegmentationFrameMetrics) => void
 ) {
     if (!segmenter || !videoEl || !canvasEl || stopFlag.current) return;
 
@@ -89,15 +95,19 @@ async function runSegmentationLoop(
         const ctx = canvasEl.getContext('2d');
         if (ctx) ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
         onUpdateMask(null);
-        requestAnimationFrame(() => runSegmentationLoop(segmenter, videoEl, canvasEl, offscreen, offCtx, stopFlag, onUpdateMask));
+        requestAnimationFrame(() => runSegmentationLoop(segmenter, videoEl, canvasEl, offscreen, offCtx, stopFlag, onUpdateMask, onFrameMetrics));
         return;
     }
 
     try {
+        const loopStartedAt = performance.now();
         const segmentationConfig = { multiSegmentation: false, segmentBodyParts: false } as const;
         const people = await segmenter.segmentPeople(videoEl, segmentationConfig);
+        if (stopFlag.current) return;
+        const segmentedAt = performance.now();
         if (people.length > 0) {
             await drawMask(people, canvasEl, offscreen, offCtx, onUpdateMask);
+            if (stopFlag.current) return;
         } else {
             // Optionally, clear canvas if no person
             const ctx = canvasEl.getContext('2d');
@@ -106,14 +116,24 @@ async function runSegmentationLoop(
             }
             onUpdateMask(null);
         }
+        if (stopFlag.current) return;
+        const loopEndedAt = performance.now();
+        onFrameMetrics?.({
+            segmentMs: segmentedAt - loopStartedAt,
+            maskMs: loopEndedAt - segmentedAt,
+            totalMs: loopEndedAt - loopStartedAt,
+            hasPeople: people.length > 0,
+        });
     } catch {
+        if (stopFlag.current) return;
         // On any segmentation error, clear and continue
         const ctx = canvasEl.getContext('2d');
         if (ctx) ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
         onUpdateMask(null);
     }
 
-    requestAnimationFrame(() => runSegmentationLoop(segmenter, videoEl, canvasEl, offscreen, offCtx, stopFlag, onUpdateMask));
+    if (stopFlag.current) return;
+    requestAnimationFrame(() => runSegmentationLoop(segmenter, videoEl, canvasEl, offscreen, offCtx, stopFlag, onUpdateMask, onFrameMetrics));
 }
 ////////////////////////////////////////////////////////////////
 
@@ -121,12 +141,20 @@ export function SegmentationOverlay({
     videoRef,
     width,
     height,
-    onUpdateMask
+    settings,
+    showMask,
+    onUpdateMask,
+    onStatusChange,
+    onFrameMetrics
 }: {
     videoRef: React.RefObject<HTMLVideoElement | null>;
     width: number;
     height: number;
+    settings: BodyPixSettings;
+    showMask: boolean;
     onUpdateMask: (mask: ImageData | null) => void;
+    onStatusChange?: (status: SegmentationStatus) => void;
+    onFrameMetrics?: (metrics: SegmentationFrameMetrics) => void;
 }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const offscreenRef = useRef<HTMLCanvasElement | null>(null);
@@ -136,39 +164,78 @@ export function SegmentationOverlay({
         let segmenter: Segmenter | null = null;
         const stopFlag = { current: false };
 
+        const retryDelay = (attempt: number) => {
+            const delay = SEGMENTATION_RETRY_BASE_MS * 2 ** Math.min(attempt, 4);
+            return Math.min(SEGMENTATION_RETRY_MAX_MS, delay);
+        };
+
+        const sleep = (delayMs: number) => new Promise((resolve) => {
+            window.setTimeout(resolve, delayMs);
+        });
+
         async function setup() {
-            // Wait until we have
-            // - window.bodySegmentation, the package we load from CDN in layout.tsx/RootLayout
-            // - videoRef.current, the video element we pass in from VideoFeed.tsx
-            // - canvasRef.current, which is the canvas defined in THIS component
-            while (
-                !window.bodySegmentation ||
-                !videoRef.current ||
-                !canvasRef.current
-            ) {
-                await new Promise((res) => setTimeout(res, 100));
-            }
-            // Ensure we have an offscreen canvas/context to reuse
-            if (!offscreenRef.current) {
-                offscreenRef.current = document.createElement('canvas');
-                offCtxRef.current = offscreenRef.current.getContext('2d');
-            }
-            // Wait until the video has valid dimensions to avoid 0x0 textures
-            while (videoRef.current && (videoRef.current.videoWidth === 0 || videoRef.current.videoHeight === 0)) {
-                await new Promise((res) => setTimeout(res, 50));
-            }
-            // Once we have all these things, initialize the segmenter
-            segmenter = await initSegmenter();
-            if (offscreenRef.current && offCtxRef.current) {
-                runSegmentationLoop(
-                    segmenter as Segmenter,
-                    videoRef.current,
-                    canvasRef.current,
-                    offscreenRef.current,
-                    offCtxRef.current,
-                    stopFlag,
-                    onUpdateMask
-                );
+            let attempt = 0;
+
+            while (!stopFlag.current) {
+                try {
+                    onStatusChange?.(attempt > 0 ? "restarting" : "waiting");
+                    const waitStartedAt = Date.now();
+                    // Wait until we have
+                    // - window.bodySegmentation, the package we load from CDN in layout.tsx/RootLayout
+                    // - videoRef.current, the video element we pass in from VideoFeed.tsx
+                    // - canvasRef.current, which is the canvas defined in THIS component
+                    while (
+                        !window.bodySegmentation ||
+                        !videoRef.current ||
+                        !canvasRef.current
+                    ) {
+                        if (stopFlag.current) return;
+                        if (Date.now() - waitStartedAt > SEGMENTATION_SETUP_TIMEOUT_MS) {
+                            throw new Error("Timed out waiting for segmentation dependencies");
+                        }
+                        await sleep(100);
+                    }
+                    // Ensure we have an offscreen canvas/context to reuse
+                    if (!offscreenRef.current) {
+                        offscreenRef.current = document.createElement('canvas');
+                        offCtxRef.current = offscreenRef.current.getContext('2d');
+                    }
+                    // Wait until the video has valid dimensions to avoid 0x0 textures
+                    while (videoRef.current && (videoRef.current.videoWidth === 0 || videoRef.current.videoHeight === 0)) {
+                        if (stopFlag.current) return;
+                        if (Date.now() - waitStartedAt > SEGMENTATION_SETUP_TIMEOUT_MS) {
+                            throw new Error("Timed out waiting for video dimensions");
+                        }
+                        await sleep(50);
+                    }
+                    // Once we have all these things, initialize the segmenter
+                    onStatusChange?.("loading-model");
+                    segmenter = await initSegmenter(settings);
+                    if (stopFlag.current) return;
+                    onStatusChange?.("ready");
+                    if (offscreenRef.current && offCtxRef.current) {
+                        runSegmentationLoop(
+                            segmenter as Segmenter,
+                            videoRef.current,
+                            canvasRef.current,
+                            offscreenRef.current,
+                            offCtxRef.current,
+                            stopFlag,
+                            onUpdateMask,
+                            onFrameMetrics
+                        );
+                    }
+                    return;
+                } catch (error) {
+                    if (stopFlag.current) return;
+                    console.error("Error initializing segmentation:", error);
+                    onStatusChange?.("restarting");
+                    onUpdateMask(null);
+                    segmenter?.dispose?.();
+                    segmenter = null;
+                    await sleep(retryDelay(attempt));
+                    attempt += 1;
+                }
             }
         }
 
@@ -179,7 +246,7 @@ export function SegmentationOverlay({
             stopFlag.current = true;
             segmenter?.dispose?.();
         };
-    }, [videoRef, onUpdateMask]);
+    }, [videoRef, onUpdateMask, onStatusChange, onFrameMetrics, settings]);
 
 
     return (
@@ -187,7 +254,7 @@ export function SegmentationOverlay({
             ref={canvasRef}
             width={width}
             height={height}
-            className="absolute inset-0 pointer-events-none"
+            className={`absolute inset-0 pointer-events-none transition-opacity duration-150 ${showMask ? "opacity-50 mix-blend-screen" : "opacity-0"}`}
         />
     );
 }
