@@ -294,7 +294,17 @@ export default function LettersRenderer({
 
     draw();
     return () => cancelAnimationFrame(rafId);
-  }, [width, height, onFrameMetrics]);
+  }, [
+    width,
+    height,
+    fontSize,
+    fontFamily,
+    fontColor,
+    showHitbox,
+    letterDurationMs,
+    maxResolveSteps,
+    onFrameMetrics,
+  ]);
 
   return (
     <canvas

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Letter } from "@/app/types";
 
 interface LetterSpawnerProps {
@@ -14,6 +14,8 @@ interface LetterSpawnerProps {
   lettersPerSecond: number; // overall emission rate
   maxActiveLetters: number;
   fallSpeedMultiplier: number;
+  letterColorGrayMin: number;
+  letterColorGrayMax: number;
   onFirstLetterSpawned?: () => void;
 }
 
@@ -30,6 +32,8 @@ export default function LetterSpawner({
   lettersPerSecond,
   maxActiveLetters,
   fallSpeedMultiplier,
+  letterColorGrayMin,
+  letterColorGrayMax,
   onFirstLetterSpawned,
 }: LetterSpawnerProps) {
   const MAX_EMIT_PER_FRAME = 16; // cap to prevent bursty spawns on slow frames
@@ -53,11 +57,11 @@ export default function LetterSpawner({
     return Math.max(0, Math.min(255, Math.round(value)));
   }
 
-  function generateRainGrayColor(): string {
+  const generateRainGrayColor = useCallback((): string => {
     // Gray values in a safe mid-range: avoid near-black and near-white.
     // Tweak these bounds to make the rain darker or lighter.
-    const minGray = 60;   // 0 is black
-    const maxGray = 210;  // 255 is white
+    const minGray = Math.max(0, Math.min(255, Math.round(letterColorGrayMin)));
+    const maxGray = Math.max(minGray, Math.min(255, Math.round(letterColorGrayMax)));
     const base = Math.floor(minGray + Math.random() * (maxGray - minGray));
 
     // Add a tiny independent jitter per channel to keep very low saturation
@@ -68,7 +72,7 @@ export default function LetterSpawner({
     const g = clampByte(base + jitter());
     const b = clampByte(base + jitter());
     return `rgb(${r}, ${g}, ${b})`;
-  }
+  }, [letterColorGrayMin, letterColorGrayMax]);
 
   function splitGraphemes(input: string): string[] {
     // Use Intl.Segmenter if available for proper grapheme clustering; otherwise fallback
@@ -294,12 +298,17 @@ export default function LetterSpawner({
     titlesQueue,
     width,
     fontSize,
+    fontFamily,
     letterFallSpeedMin,
     letterFallSpeedMax,
     lettersPerSecond,
     maxActiveLetters,
     fallSpeedMultiplier,
+    letterColorGrayMin,
+    letterColorGrayMax,
     lettersRef,
+    removeTitle,
+    generateRainGrayColor,
     onFirstLetterSpawned,
   ]);
 

@@ -13,6 +13,12 @@ import {
     SegmentationStatus,
     TitlesStatus
 } from "../types";
+import {
+    DEFAULT_TORRENT_SETTINGS,
+    normalizeTorrentSettings,
+    TORRENT_SETTING_DEFINITIONS,
+    type TorrentSettings,
+} from "../lib/torrentSettings";
 
 const STARTUP_STEP_MIN_MS = 750;
 const STARTUP_SEQUENCE = [
@@ -31,14 +37,9 @@ const DEFAULT_BODYPIX_SETTINGS: BodyPixSettings = {
 
 const BODYPIX_MULTIPLIERS: BodyPixMultiplier[] = [0.5, 0.75, 1];
 const BODYPIX_OUTPUT_STRIDES: BodyPixOutputStride[] = [8, 16, 32];
-const DEFAULT_MAX_ACTIVE_LETTERS = 1750;
-const MIN_ACTIVE_LETTERS = 250;
-const MAX_ACTIVE_LETTERS = 8000;
-const ACTIVE_LETTER_STEP = 250;
-const DEFAULT_FALL_SPEED_MULTIPLIER = 1;
-const MIN_FALL_SPEED_MULTIPLIER = 0.25;
-const MAX_FALL_SPEED_MULTIPLIER = 3;
-const FALL_SPEED_STEP = 0.25;
+const MAX_ACTIVE_LETTERS_DEFINITION = TORRENT_SETTING_DEFINITIONS.find((definition) => definition.key === "maxActiveLetters")!;
+const FALL_SPEED_MULTIPLIER_DEFINITION = TORRENT_SETTING_DEFINITIONS.find((definition) => definition.key === "fallSpeedMultiplier")!;
+const SETTINGS_POLL_INTERVAL_MS = 3000;
 const SEGMENTATION_STALL_MS = 8000;
 const LETTER_RENDERER_STALL_MS = 5000;
 const WATCHDOG_INTERVAL_MS = 2000;
@@ -207,8 +208,7 @@ function HelperPanel({
     height,
     bodyPixSettings,
     showSegmentationMask,
-    maxActiveLetters,
-    fallSpeedMultiplier,
+    letterSettings,
     onBodyPixSettingsChange,
     onResetBodyPixSettings,
     onShowSegmentationMaskChange,
@@ -226,8 +226,7 @@ function HelperPanel({
     height: number;
     bodyPixSettings: BodyPixSettings;
     showSegmentationMask: boolean;
-    maxActiveLetters: number;
-    fallSpeedMultiplier: number;
+    letterSettings: TorrentSettings;
     onBodyPixSettingsChange: (settings: BodyPixSettings) => void;
     onResetBodyPixSettings: () => void;
     onShowSegmentationMaskChange: (show: boolean) => void;
@@ -240,8 +239,12 @@ function HelperPanel({
         ["Letters FPS", formatNumber(metrics.letterFps)],
         ["Letter draw", `${formatNumber(metrics.letterDrawMs)} ms`],
         ["Active letters", String(metrics.activeLetters)],
-        ["Letter cap", String(maxActiveLetters)],
-        ["Fall speed", `${formatNumber(fallSpeedMultiplier, 2)}x`],
+        ["Letter cap", String(letterSettings.maxActiveLetters)],
+        ["Fall speed", `${formatNumber(letterSettings.fallSpeedMultiplier, 2)}x`],
+        ["Font size", `${formatNumber(letterSettings.letterFontSize, 0)} px`],
+        ["Frequency", `${formatNumber(letterSettings.lettersPerSecond, 0)} /s`],
+        ["Canvas ratio", formatNumber(letterSettings.canvasAspectRatio, 3)],
+        ["Color range", `${letterSettings.letterColorGrayMin}-${letterSettings.letterColorGrayMax}`],
         ["BodyPix FPS", formatNumber(metrics.segmentationFps)],
         ["BodyPix inference", `${formatNumber(metrics.segmentMs)} ms`],
         ["Mask update", `${formatNumber(metrics.maskMs)} ms`],
@@ -329,10 +332,10 @@ function HelperPanel({
                     <input
                         className="w-24 bg-black/70 px-1 py-0.5 text-right text-white outline outline-1 outline-white/25"
                         type="number"
-                        min={MIN_FALL_SPEED_MULTIPLIER}
-                        max={MAX_FALL_SPEED_MULTIPLIER}
-                        step={FALL_SPEED_STEP}
-                        value={fallSpeedMultiplier}
+                        min={FALL_SPEED_MULTIPLIER_DEFINITION.min}
+                        max={FALL_SPEED_MULTIPLIER_DEFINITION.max}
+                        step={FALL_SPEED_MULTIPLIER_DEFINITION.step}
+                        value={letterSettings.fallSpeedMultiplier}
                         onChange={(event) => onFallSpeedMultiplierChange(Number(event.target.value))}
                     />
                 </label>
@@ -340,7 +343,7 @@ function HelperPanel({
                     <button
                         type="button"
                         className="border border-white/25 px-2 py-1 text-white/75 hover:border-white/60 hover:text-white"
-                        onClick={() => onFallSpeedMultiplierChange(fallSpeedMultiplier - FALL_SPEED_STEP)}
+                        onClick={() => onFallSpeedMultiplierChange(letterSettings.fallSpeedMultiplier - FALL_SPEED_MULTIPLIER_DEFINITION.step)}
                     >
                         -0.25
                     </button>
@@ -354,7 +357,7 @@ function HelperPanel({
                     <button
                         type="button"
                         className="border border-white/25 px-2 py-1 text-white/75 hover:border-white/60 hover:text-white"
-                        onClick={() => onFallSpeedMultiplierChange(fallSpeedMultiplier + FALL_SPEED_STEP)}
+                        onClick={() => onFallSpeedMultiplierChange(letterSettings.fallSpeedMultiplier + FALL_SPEED_MULTIPLIER_DEFINITION.step)}
                     >
                         +0.25
                     </button>
@@ -366,10 +369,10 @@ function HelperPanel({
                     <input
                         className="w-24 bg-black/70 px-1 py-0.5 text-right text-white outline outline-1 outline-white/25"
                         type="number"
-                        min={MIN_ACTIVE_LETTERS}
-                        max={MAX_ACTIVE_LETTERS}
-                        step={ACTIVE_LETTER_STEP}
-                        value={maxActiveLetters}
+                        min={MAX_ACTIVE_LETTERS_DEFINITION.min}
+                        max={MAX_ACTIVE_LETTERS_DEFINITION.max}
+                        step={MAX_ACTIVE_LETTERS_DEFINITION.step}
+                        value={letterSettings.maxActiveLetters}
                         onChange={(event) => onMaxActiveLettersChange(Number(event.target.value))}
                     />
                 </label>
@@ -377,7 +380,7 @@ function HelperPanel({
                     <button
                         type="button"
                         className="border border-white/25 px-2 py-1 text-white/75 hover:border-white/60 hover:text-white"
-                        onClick={() => onMaxActiveLettersChange(maxActiveLetters - ACTIVE_LETTER_STEP)}
+                        onClick={() => onMaxActiveLettersChange(letterSettings.maxActiveLetters - MAX_ACTIVE_LETTERS_DEFINITION.step)}
                     >
                         -250
                     </button>
@@ -391,7 +394,7 @@ function HelperPanel({
                     <button
                         type="button"
                         className="border border-white/25 px-2 py-1 text-white/75 hover:border-white/60 hover:text-white"
-                        onClick={() => onMaxActiveLettersChange(maxActiveLetters + ACTIVE_LETTER_STEP)}
+                        onClick={() => onMaxActiveLettersChange(letterSettings.maxActiveLetters + MAX_ACTIVE_LETTERS_DEFINITION.step)}
                     >
                         +250
                     </button>
@@ -406,16 +409,16 @@ export default function VideoDisplay() {
     const videoRef = useRef<HTMLVideoElement>(null);
     const MARGIN_PX = 24;
 
+    const [torrentSettings, setTorrentSettings] = useState<TorrentSettings>(DEFAULT_TORRENT_SETTINGS);
     const [width, setWidth] = useState<number>(640);
     const [height, setHeight] = useState<number>(480);
-    const videoAspectRef = useRef<number>(640 / 480);
 
-    // Recalculate canvas size to max-fit inside the viewport while preserving webcam aspect ratio
+    // Recalculate canvas size to max-fit inside the viewport using the configured stage aspect ratio.
     useEffect(() => {
         function fitToViewport() {
             const availW = Math.max(320, window.innerWidth - MARGIN_PX * 2);
             const availH = Math.max(240, window.innerHeight - MARGIN_PX * 2);
-            const aspect = videoAspectRef.current;
+            const aspect = torrentSettings.canvasAspectRatio;
             if (availW / availH > aspect) {
                 // height-constrained
                 const h = availH;
@@ -435,28 +438,7 @@ export default function VideoDisplay() {
         fitToViewport();
         window.addEventListener("resize", fitToViewport);
         return () => window.removeEventListener("resize", fitToViewport);
-    }, []);
-
-    // Once the video metadata is available, capture the true webcam aspect ratio and refit
-    useEffect(() => {
-        function updateAspectAndFit() {
-            const v = videoRef.current;
-            if (!v) return;
-            const vw = v.videoWidth;
-            const vh = v.videoHeight;
-            if (vw > 0 && vh > 0) {
-                videoAspectRef.current = vw / vh;
-                // trigger a resize-based recalculation using current viewport
-                const evt = new Event("resize");
-                window.dispatchEvent(evt);
-            }
-        }
-
-        const v = videoRef.current;
-        if (v && v.readyState >= 1) updateAspectAndFit();
-        v?.addEventListener("loadedmetadata", updateAspectAndFit);
-        return () => v?.removeEventListener("loadedmetadata", updateAspectAndFit);
-    }, []);
+    }, [torrentSettings.canvasAspectRatio]);
 
     const [segmentationMask, setSegmentationMask] = useState<ImageData | null>(null);
 
@@ -472,8 +454,6 @@ export default function VideoDisplay() {
     const [showHelperPanel, setShowHelperPanel] = useState(false);
     const [showSegmentationMask, setShowSegmentationMask] = useState(false);
     const [bodyPixSettings, setBodyPixSettings] = useState<BodyPixSettings>(DEFAULT_BODYPIX_SETTINGS);
-    const [maxActiveLetters, setMaxActiveLetters] = useState(DEFAULT_MAX_ACTIVE_LETTERS);
-    const [fallSpeedMultiplier, setFallSpeedMultiplier] = useState(DEFAULT_FALL_SPEED_MULTIPLIER);
     const [segmentationRestartKey, setSegmentationRestartKey] = useState(0);
     const [lettersRestartKey, setLettersRestartKey] = useState(0);
     const [helperMetrics, setHelperMetrics] = useState<HelperMetrics>({
@@ -504,6 +484,30 @@ export default function VideoDisplay() {
     const lastSegmentationFrameAtRef = useRef(0);
     const lastLetterFrameAtRef = useRef(0);
 
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadSettings() {
+            try {
+                const response = await fetch("/api/settings", { cache: "no-store" });
+                if (!response.ok) return;
+                const json = await response.json();
+                if (cancelled) return;
+                setTorrentSettings(normalizeTorrentSettings(json.settings));
+            } catch {
+                // Keep current in-memory settings if the settings service is temporarily unavailable.
+            }
+        }
+
+        loadSettings();
+        const intervalId = window.setInterval(loadSettings, SETTINGS_POLL_INTERVAL_MS);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(intervalId);
+        };
+    }, []);
+
     const handleCameraStatus = useCallback((status: CameraStatus) => {
         setCameraStatus(status);
     }, []);
@@ -533,24 +537,31 @@ export default function VideoDisplay() {
     }, []);
 
     const handleMaxActiveLettersChange = useCallback((value: number) => {
-        if (!Number.isFinite(value)) return;
-        const clamped = Math.max(MIN_ACTIVE_LETTERS, Math.min(MAX_ACTIVE_LETTERS, Math.round(value)));
-        setMaxActiveLetters(clamped);
+        setTorrentSettings((current) => normalizeTorrentSettings({
+            ...current,
+            maxActiveLetters: value,
+        }));
     }, []);
 
     const handleResetMaxActiveLetters = useCallback(() => {
-        setMaxActiveLetters(DEFAULT_MAX_ACTIVE_LETTERS);
+        setTorrentSettings((current) => ({
+            ...current,
+            maxActiveLetters: DEFAULT_TORRENT_SETTINGS.maxActiveLetters,
+        }));
     }, []);
 
     const handleFallSpeedMultiplierChange = useCallback((value: number) => {
-        if (!Number.isFinite(value)) return;
-        const rounded = Math.round(value / FALL_SPEED_STEP) * FALL_SPEED_STEP;
-        const clamped = Math.max(MIN_FALL_SPEED_MULTIPLIER, Math.min(MAX_FALL_SPEED_MULTIPLIER, rounded));
-        setFallSpeedMultiplier(clamped);
+        setTorrentSettings((current) => normalizeTorrentSettings({
+            ...current,
+            fallSpeedMultiplier: value,
+        }));
     }, []);
 
     const handleResetFallSpeedMultiplier = useCallback(() => {
-        setFallSpeedMultiplier(DEFAULT_FALL_SPEED_MULTIPLIER);
+        setTorrentSettings((current) => ({
+            ...current,
+            fallSpeedMultiplier: DEFAULT_TORRENT_SETTINGS.fallSpeedMultiplier,
+        }));
     }, []);
 
     const handleLetterFrameMetrics = useCallback((metrics: LetterFrameMetrics) => {
@@ -778,8 +789,7 @@ export default function VideoDisplay() {
                         height={height}
                         segmentationMask={segmentationMask}
                         spawnLetters={lettersCanSpawn}
-                        maxActiveLetters={maxActiveLetters}
-                        fallSpeedMultiplier={fallSpeedMultiplier}
+                        letterSettings={torrentSettings}
                         onQueueLengthChange={setQueueLength}
                         onTitlesStatusChange={handleTitlesStatus}
                         onFirstLetterSpawned={handleFirstLetterSpawned}
@@ -805,8 +815,7 @@ export default function VideoDisplay() {
                         height={height}
                         bodyPixSettings={bodyPixSettings}
                         showSegmentationMask={showSegmentationMask}
-                        maxActiveLetters={maxActiveLetters}
-                        fallSpeedMultiplier={fallSpeedMultiplier}
+                        letterSettings={torrentSettings}
                         onBodyPixSettingsChange={handleBodyPixSettingsChange}
                         onResetBodyPixSettings={handleResetBodyPixSettings}
                         onShowSegmentationMaskChange={handleShowSegmentationMaskChange}

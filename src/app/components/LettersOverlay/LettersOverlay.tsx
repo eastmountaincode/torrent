@@ -1,19 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import LettersRenderer from "./LettersRenderer";
 import { useRedditTitlesState } from "@/app/hooks/useRedditTitles";
 import LetterSpawner from "./LetterSpawner";
 import { Letter, LetterFrameMetrics, TitlesStatus } from "@/app/types";
+import { TorrentSettings } from "@/app/lib/torrentSettings";
 
 const MAX_QUEUE_LENGTH = 300;
 const MAX_SEEN_LENGTH = MAX_QUEUE_LENGTH * 3;
 
-const LETTERS_PER_SECOND = 800; // overall emission rate (letters/second)
-const LETTER_FALL_SPEED_MIN = 4;
-const LETTER_FALL_SPEED_MAX = 6;
-const LETTER_FONT_SIZE = 50;
 const LETTER_FONT_FAMILY = '"ChicagoKare", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Noto Sans CJK JP", "Noto Sans CJK KR", "Noto Sans CJK SC", "Noto Sans Arabic", "Noto Sans", sans-serif';
 const LETTER_FONT_COLOR = "#000000"; // canvas fillStyle-compatible color
-const LETTER_DURATION_MS = 5500; // ms each letter lives
 const MAX_RESOLVE_STEPS = 14; // cap how many pixels we push up to escape mask
 const SHOW_HITBOX = false;
 
@@ -23,8 +19,7 @@ export default function LettersOverlay({
     height,
     segmentationMask,
     spawnLetters,
-    maxActiveLetters,
-    fallSpeedMultiplier,
+    letterSettings,
     onQueueLengthChange,
     onTitlesStatusChange,
     onFirstLetterSpawned,
@@ -34,8 +29,7 @@ export default function LettersOverlay({
     height: number;
     segmentationMask: ImageData | null;
     spawnLetters: boolean;
-    maxActiveLetters: number;
-    fallSpeedMultiplier: number;
+    letterSettings: TorrentSettings;
     onQueueLengthChange: (n: number) => void;
     onTitlesStatusChange?: (status: TitlesStatus) => void;
     onFirstLetterSpawned?: () => void;
@@ -56,9 +50,9 @@ export default function LettersOverlay({
     const lettersRef = useRef<Letter[]>([]);
 
     // Remove a title from the queue after using it (if needed)
-    function removeTitle(idx: number) {
+    const removeTitle = useCallback((idx: number) => {
         setTitlesQueue(prev => prev.filter((_, i) => i !== idx));
-    }
+    }, []);
 
     // After every update to titlesQueue, report length
     useEffect(() => {
@@ -101,13 +95,15 @@ export default function LettersOverlay({
             lettersRef={lettersRef}
             spawnLetters={spawnLetters}
             width={width}
-            fontSize={LETTER_FONT_SIZE}
+            fontSize={letterSettings.letterFontSize}
             fontFamily={LETTER_FONT_FAMILY}
-            letterFallSpeedMin={LETTER_FALL_SPEED_MIN}
-            letterFallSpeedMax={LETTER_FALL_SPEED_MAX}
-            lettersPerSecond={LETTERS_PER_SECOND}
-            maxActiveLetters={maxActiveLetters}
-            fallSpeedMultiplier={fallSpeedMultiplier}
+            letterFallSpeedMin={letterSettings.letterFallSpeedMin}
+            letterFallSpeedMax={letterSettings.letterFallSpeedMax}
+            lettersPerSecond={letterSettings.lettersPerSecond}
+            maxActiveLetters={letterSettings.maxActiveLetters}
+            fallSpeedMultiplier={letterSettings.fallSpeedMultiplier}
+            letterColorGrayMin={letterSettings.letterColorGrayMin}
+            letterColorGrayMax={letterSettings.letterColorGrayMax}
             onFirstLetterSpawned={onFirstLetterSpawned}
         />
         <LettersRenderer
@@ -115,11 +111,11 @@ export default function LettersOverlay({
             width={width}
             height={height}
             segmentationMask={segmentationMask}
-            fontSize={LETTER_FONT_SIZE}
+            fontSize={letterSettings.letterFontSize}
             fontFamily={LETTER_FONT_FAMILY}
             fontColor={LETTER_FONT_COLOR}
             showHitbox={SHOW_HITBOX}
-            letterDurationMs={LETTER_DURATION_MS}
+            letterDurationMs={letterSettings.letterDurationMs}
             maxResolveSteps={MAX_RESOLVE_STEPS}
             onFrameMetrics={onFrameMetrics}
         />
