@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { Letter } from "@/app/types";
+import { ColorMode } from "@/app/lib/torrentSettings";
 
 interface LetterSpawnerProps {
   titlesQueue: string[];                    // From Reddit
@@ -14,8 +15,8 @@ interface LetterSpawnerProps {
   lettersPerSecond: number; // overall emission rate
   maxActiveLetters: number;
   fallSpeedMultiplier: number;
-  letterColorGrayMin: number;
-  letterColorGrayMax: number;
+  colorPalette: string[];
+  colorMode: ColorMode;
   onFirstLetterSpawned?: () => void;
 }
 
@@ -32,8 +33,8 @@ export default function LetterSpawner({
   lettersPerSecond,
   maxActiveLetters,
   fallSpeedMultiplier,
-  letterColorGrayMin,
-  letterColorGrayMax,
+  colorPalette,
+  colorMode,
   onFirstLetterSpawned,
 }: LetterSpawnerProps) {
   const MAX_EMIT_PER_FRAME = 16; // cap to prevent bursty spawns on slow frames
@@ -53,26 +54,10 @@ export default function LetterSpawner({
   const currentTitleColor = useRef<string>("#000000");
   const reportedFirstLetter = useRef(false);
 
-  function clampByte(value: number): number {
-    return Math.max(0, Math.min(255, Math.round(value)));
-  }
-
-  const generateRainGrayColor = useCallback((): string => {
-    // Gray values in a safe mid-range: avoid near-black and near-white.
-    // Tweak these bounds to make the rain darker or lighter.
-    const minGray = Math.max(0, Math.min(255, Math.round(letterColorGrayMin)));
-    const maxGray = Math.max(minGray, Math.min(255, Math.round(letterColorGrayMax)));
-    const base = Math.floor(minGray + Math.random() * (maxGray - minGray));
-
-    // Add a tiny independent jitter per channel to keep very low saturation
-    // instead of a perfectly neutral gray, which reads a bit lifeless.
-    const jitterRange = 12; // ±6 variation
-    const jitter = () => (Math.random() - 0.5) * jitterRange;
-    const r = clampByte(base + jitter());
-    const g = clampByte(base + jitter());
-    const b = clampByte(base + jitter());
-    return `rgb(${r}, ${g}, ${b})`;
-  }, [letterColorGrayMin, letterColorGrayMax]);
+  const pickLetterColor = useCallback((): string => {
+    const palette = colorPalette.length > 0 ? colorPalette : ["#000000"];
+    return palette[Math.floor(Math.random() * palette.length)] || "#000000";
+  }, [colorPalette]);
 
   function splitGraphemes(input: string): string[] {
     // Use Intl.Segmenter if available for proper grapheme clustering; otherwise fallback
@@ -211,7 +196,7 @@ export default function LetterSpawner({
           currentTitleTotalWidth.current = width; // not used anymore but keep populated
           currentTitleStartLeft.current = 0;
           currentTitleRemainingIdxs.current = Array.from({ length: graphemes.length }, (_, k) => k);
-          currentTitleColor.current = generateRainGrayColor();
+          currentTitleColor.current = pickLetterColor();
         }
 
         // If nothing remains for this title, finalize and move on
@@ -262,7 +247,7 @@ export default function LetterSpawner({
           width: glyphWidth,
           createdAt,
           speed,
-          color: currentTitleColor.current,
+          color: colorMode === "letter" ? pickLetterColor() : currentTitleColor.current,
           vx: 0,
           vy: 0,
         });
@@ -304,11 +289,11 @@ export default function LetterSpawner({
     lettersPerSecond,
     maxActiveLetters,
     fallSpeedMultiplier,
-    letterColorGrayMin,
-    letterColorGrayMax,
+    colorPalette,
+    colorMode,
     lettersRef,
     removeTitle,
-    generateRainGrayColor,
+    pickLetterColor,
     onFirstLetterSpawned,
   ]);
 

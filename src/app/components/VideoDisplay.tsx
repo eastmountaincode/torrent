@@ -16,6 +16,7 @@ import {
 import {
     DEFAULT_TORRENT_SETTINGS,
     normalizeTorrentSettings,
+    paletteForSettings,
     TORRENT_SETTING_DEFINITIONS,
     type TorrentSettings,
 } from "../lib/torrentSettings";
@@ -236,6 +237,7 @@ function HelperPanel({
     onResetFallSpeedMultiplier: () => void;
 }) {
     const rows = [
+        ["Settings", "admin synced"],
         ["Letters FPS", formatNumber(metrics.letterFps)],
         ["Letter draw", `${formatNumber(metrics.letterDrawMs)} ms`],
         ["Active letters", String(metrics.activeLetters)],
@@ -244,7 +246,7 @@ function HelperPanel({
         ["Font size", `${formatNumber(letterSettings.letterFontSize, 0)} px`],
         ["Frequency", `${formatNumber(letterSettings.lettersPerSecond, 0)} /s`],
         ["Canvas ratio", formatNumber(letterSettings.canvasAspectRatio, 3)],
-        ["Color range", `${letterSettings.letterColorGrayMin}-${letterSettings.letterColorGrayMax}`],
+        ["Palette", paletteForSettings(letterSettings).join(" ")],
         ["BodyPix FPS", formatNumber(metrics.segmentationFps)],
         ["BodyPix inference", `${formatNumber(metrics.segmentMs)} ms`],
         ["Mask update", `${formatNumber(metrics.maskMs)} ms`],

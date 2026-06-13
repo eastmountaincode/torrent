@@ -3,7 +3,7 @@ import LettersRenderer from "./LettersRenderer";
 import { useRedditTitlesState } from "@/app/hooks/useRedditTitles";
 import LetterSpawner from "./LetterSpawner";
 import { Letter, LetterFrameMetrics, TitlesStatus } from "@/app/types";
-import { TorrentSettings } from "@/app/lib/torrentSettings";
+import { paletteForSettings, TorrentSettings } from "@/app/lib/torrentSettings";
 
 const MAX_QUEUE_LENGTH = 300;
 const MAX_SEEN_LENGTH = MAX_QUEUE_LENGTH * 3;
@@ -48,6 +48,7 @@ export default function LettersOverlay({
 
     // lettersRef is a ref to the current list of individual letters being rendered
     const lettersRef = useRef<Letter[]>([]);
+    const colorPalette = paletteForSettings(letterSettings);
 
     // Remove a title from the queue after using it (if needed)
     const removeTitle = useCallback((idx: number) => {
@@ -102,8 +103,8 @@ export default function LettersOverlay({
             lettersPerSecond={letterSettings.lettersPerSecond}
             maxActiveLetters={letterSettings.maxActiveLetters}
             fallSpeedMultiplier={letterSettings.fallSpeedMultiplier}
-            letterColorGrayMin={letterSettings.letterColorGrayMin}
-            letterColorGrayMax={letterSettings.letterColorGrayMax}
+            colorPalette={colorPalette}
+            colorMode={letterSettings.colorMode}
             onFirstLetterSpawned={onFirstLetterSpawned}
         />
         <LettersRenderer
