@@ -5,6 +5,7 @@ import {
     TORRENT_SETTINGS_ID,
     type TorrentSettings,
 } from "@/app/lib/torrentSettings";
+import { publishSettingsUpdated } from "@/app/lib/pusherServer";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -21,11 +22,12 @@ interface D1QueryResult<T = Record<string, unknown>> {
     errors?: Array<{ message?: string }>;
 }
 
-function jsonResponse(settings: TorrentSettings, source: "d1" | "default") {
+function jsonResponse(settings: TorrentSettings, source: "d1" | "default", realtime = false) {
     return NextResponse.json({
         settings,
         definitionsVersion: 1,
         source,
+        realtime,
     });
 }
 
@@ -151,7 +153,11 @@ export async function PUT(request: NextRequest) {
 
     try {
         await writeSettingsToD1(settings);
-        return jsonResponse(settings, "d1");
+        const realtime = await publishSettingsUpdated(settings).catch((error) => {
+            console.error("Unable to publish Torrent settings update:", error);
+            return false;
+        });
+        return jsonResponse(settings, "d1", realtime);
     } catch (error) {
         console.error("Unable to write Torrent settings:", error);
         return NextResponse.json({ error: "Unable to save settings" }, { status: 500 });

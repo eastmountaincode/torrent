@@ -20,6 +20,10 @@ import {
     TORRENT_SETTING_DEFINITIONS,
     type TorrentSettings,
 } from "../lib/torrentSettings";
+import {
+    PUSHER_SETTINGS_CHANNEL,
+    PUSHER_SETTINGS_EVENT,
+} from "../lib/realtimeSettings";
 
 const STARTUP_STEP_MIN_MS = 750;
 const STARTUP_SEQUENCE = [
@@ -80,6 +84,21 @@ interface RollingSegmentationStats {
     maskMsTotal: number;
     totalMsTotal: number;
     hasPeople: boolean;
+}
+
+interface PusherSettingsPayload {
+    settings?: unknown;
+}
+
+interface PusherChannelSubscription {
+    bind(eventName: string, callback: (payload: PusherSettingsPayload) => void): void;
+    unbind(eventName: string, callback: (payload: PusherSettingsPayload) => void): void;
+}
+
+interface PusherClientSubscription {
+    subscribe(channelName: string): PusherChannelSubscription;
+    unsubscribe(channelName: string): void;
+    disconnect(): void;
 }
 
 function targetStartupStep(
@@ -507,6 +526,37 @@ export default function VideoDisplay() {
         return () => {
             cancelled = true;
             window.clearInterval(intervalId);
+        };
+    }, []);
+
+    useEffect(() => {
+        const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
+        const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+        if (!key || !cluster) return;
+
+        let cancelled = false;
+        let pusher: PusherClientSubscription | null = null;
+        let channel: PusherChannelSubscription | null = null;
+
+        const handleSettingsUpdate = (payload: PusherSettingsPayload) => {
+            setTorrentSettings(normalizeTorrentSettings(payload.settings));
+        };
+
+        import("pusher-js").then(({ default: Pusher }) => {
+            if (cancelled) return;
+
+            pusher = new Pusher(key, { cluster }) as PusherClientSubscription;
+            channel = pusher.subscribe(PUSHER_SETTINGS_CHANNEL);
+            channel.bind(PUSHER_SETTINGS_EVENT, handleSettingsUpdate);
+        }).catch((error) => {
+            console.error("Unable to connect to Torrent realtime settings:", error);
+        });
+
+        return () => {
+            cancelled = true;
+            channel?.unbind(PUSHER_SETTINGS_EVENT, handleSettingsUpdate);
+            pusher?.unsubscribe(PUSHER_SETTINGS_CHANNEL);
+            pusher?.disconnect();
         };
     }, []);
 

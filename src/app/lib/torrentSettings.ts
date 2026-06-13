@@ -1,4 +1,4 @@
-export const COLOR_PRESETS = {
+const colorPresets = {
     grayscale: ["#3c3c3c", "#d2d2d2"],
     knicks: ["#006bb6", "#f58426", "#ffffff"],
     highContrast: ["#000000", "#ffffff"],
@@ -6,7 +6,11 @@ export const COLOR_PRESETS = {
     cool: ["#63d2ff", "#7b61ff", "#f4f8ff"],
 } as const;
 
-export type ColorPresetName = keyof typeof COLOR_PRESETS | "custom";
+type BuiltInColorPresetName = keyof typeof colorPresets;
+
+export const COLOR_PRESETS: Record<BuiltInColorPresetName, readonly string[]> = colorPresets;
+
+export type ColorPresetName = BuiltInColorPresetName | "custom";
 export type ColorMode = "title" | "letter";
 
 export interface TorrentSettings {
@@ -224,7 +228,7 @@ export function normalizeTorrentSettings(input: unknown): TorrentSettings {
         settings.color1 = legacyGrayToHex(legacyGrayMin, 60);
         settings.color2 = legacyGrayToHex(legacyGrayMax, 210);
     } else if (settings.colorPreset !== "custom") {
-        const preset = COLOR_PRESETS[settings.colorPreset];
+        const preset: readonly string[] = COLOR_PRESETS[settings.colorPreset];
         settings.color1 = preset[0] || DEFAULT_TORRENT_SETTINGS.color1;
         settings.color2 = preset[1] || DEFAULT_TORRENT_SETTINGS.color2;
         settings.color3 = preset[2] || DEFAULT_TORRENT_SETTINGS.color3;
