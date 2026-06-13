@@ -93,6 +93,8 @@ interface DisplayMetrics {
     devicePixelRatio: number;
 }
 
+type RealtimeStatus = "disabled" | "connecting" | "connected" | "unavailable" | "error";
+
 interface PusherSettingsPayload {
     settings?: unknown;
 }
@@ -103,6 +105,10 @@ interface PusherChannelSubscription {
 }
 
 interface PusherClientSubscription {
+    connection: {
+        bind(eventName: string, callback: () => void): void;
+        unbind(eventName: string, callback: () => void): void;
+    };
     subscribe(channelName: string): PusherChannelSubscription;
     unsubscribe(channelName: string): void;
     disconnect(): void;
@@ -251,6 +257,8 @@ function HelperPanel({
     metrics,
     cameraMetrics,
     displayMetrics,
+    realtimeStatus,
+    realtimeUpdatedAt,
     cameraStatus,
     segmentationStatus,
     titlesStatus,
@@ -271,6 +279,8 @@ function HelperPanel({
     metrics: HelperMetrics;
     cameraMetrics: CameraMetrics;
     displayMetrics: DisplayMetrics;
+    realtimeStatus: RealtimeStatus;
+    realtimeUpdatedAt: number | null;
     cameraStatus: CameraStatus;
     segmentationStatus: SegmentationStatus;
     titlesStatus: TitlesStatus;
@@ -290,6 +300,7 @@ function HelperPanel({
 }) {
     const rows = [
         ["Settings", "admin synced"],
+        ["Realtime", realtimeUpdatedAt ? `${realtimeStatus} ${new Date(realtimeUpdatedAt).toLocaleTimeString()}` : realtimeStatus],
         ["Letters FPS", formatNumber(metrics.letterFps)],
         ["Letter draw", `${formatNumber(metrics.letterDrawMs)} ms`],
         ["Active letters", String(metrics.activeLetters)],
@@ -530,6 +541,8 @@ export default function VideoDisplay() {
     const [showHelperPanel, setShowHelperPanel] = useState(false);
     const [showSegmentationMask, setShowSegmentationMask] = useState(false);
     const [bodyPixSettings, setBodyPixSettings] = useState<BodyPixSettings>(DEFAULT_BODYPIX_SETTINGS);
+    const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>("disabled");
+    const [realtimeUpdatedAt, setRealtimeUpdatedAt] = useState<number | null>(null);
     const [segmentationRestartKey, setSegmentationRestartKey] = useState(0);
     const [lettersRestartKey, setLettersRestartKey] = useState(0);
     const [helperMetrics, setHelperMetrics] = useState<HelperMetrics>({
@@ -587,7 +600,10 @@ export default function VideoDisplay() {
     useEffect(() => {
         const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
         const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
-        if (!key || !cluster) return;
+        if (!key || !cluster) {
+            setRealtimeStatus("unavailable");
+            return;
+        }
 
         let cancelled = false;
         let pusher: PusherClientSubscription | null = null;
@@ -595,21 +611,34 @@ export default function VideoDisplay() {
 
         const handleSettingsUpdate = (payload: PusherSettingsPayload) => {
             setTorrentSettings(normalizeTorrentSettings(payload.settings));
+            setRealtimeUpdatedAt(Date.now());
         };
+        const handleConnected = () => setRealtimeStatus("connected");
+        const handleConnectionProblem = () => setRealtimeStatus("error");
 
+        setRealtimeStatus("connecting");
         import("pusher-js").then(({ default: Pusher }) => {
             if (cancelled) return;
 
             pusher = new Pusher(key, { cluster }) as PusherClientSubscription;
+            pusher.connection.bind("connected", handleConnected);
+            pusher.connection.bind("unavailable", handleConnectionProblem);
+            pusher.connection.bind("failed", handleConnectionProblem);
+            pusher.connection.bind("error", handleConnectionProblem);
             channel = pusher.subscribe(PUSHER_SETTINGS_CHANNEL);
             channel.bind(PUSHER_SETTINGS_EVENT, handleSettingsUpdate);
         }).catch((error) => {
             console.error("Unable to connect to Torrent realtime settings:", error);
+            setRealtimeStatus("error");
         });
 
         return () => {
             cancelled = true;
             channel?.unbind(PUSHER_SETTINGS_EVENT, handleSettingsUpdate);
+            pusher?.connection.unbind("connected", handleConnected);
+            pusher?.connection.unbind("unavailable", handleConnectionProblem);
+            pusher?.connection.unbind("failed", handleConnectionProblem);
+            pusher?.connection.unbind("error", handleConnectionProblem);
             pusher?.unsubscribe(PUSHER_SETTINGS_CHANNEL);
             pusher?.disconnect();
         };
@@ -918,6 +947,8 @@ export default function VideoDisplay() {
                         metrics={helperMetrics}
                         cameraMetrics={cameraMetrics}
                         displayMetrics={displayMetrics}
+                        realtimeStatus={realtimeStatus}
+                        realtimeUpdatedAt={realtimeUpdatedAt}
                         cameraStatus={cameraStatus}
                         segmentationStatus={segmentationStatus}
                         titlesStatus={titlesStatus}

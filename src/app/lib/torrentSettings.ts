@@ -1,6 +1,6 @@
 const colorPresets = {
     grayscale: ["#3c3c3c", "#d2d2d2"],
-    knicks: ["#006bb6", "#f58426", "#ffffff"],
+    knicks: ["#006bb6", "#f58426", "#006bb6", "#f58426"],
     highContrast: ["#000000", "#ffffff"],
     warm: ["#f6d365", "#fda085", "#ffffff"],
     cool: ["#63d2ff", "#7b61ff", "#f4f8ff"],
