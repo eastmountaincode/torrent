@@ -22,6 +22,16 @@ export interface BodyPixSettings {
     outputStride: BodyPixOutputStride;
 }
 
+export interface CameraMetrics {
+    videoWidth: number;
+    videoHeight: number;
+    trackWidth?: number;
+    trackHeight?: number;
+    frameRate?: number;
+    aspectRatio?: number;
+    label?: string;
+}
+
 export interface SegmentationFrameMetrics {
     segmentMs: number;
     maskMs: number;

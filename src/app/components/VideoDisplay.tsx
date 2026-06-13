@@ -7,6 +7,7 @@ import {
     BodyPixMultiplier,
     BodyPixOutputStride,
     BodyPixSettings,
+    CameraMetrics,
     CameraStatus,
     LetterFrameMetrics,
     SegmentationFrameMetrics,
@@ -84,6 +85,12 @@ interface RollingSegmentationStats {
     maskMsTotal: number;
     totalMsTotal: number;
     hasPeople: boolean;
+}
+
+interface DisplayMetrics {
+    viewportWidth: number;
+    viewportHeight: number;
+    devicePixelRatio: number;
 }
 
 interface PusherSettingsPayload {
@@ -218,8 +225,32 @@ function formatNumber(value: number, digits = 1) {
     return value.toFixed(digits);
 }
 
+function formatResolution(width: number | undefined, height: number | undefined) {
+    if (!width || !height) return "unknown";
+    return `${width} x ${height}`;
+}
+
+function formatVideoCrop(videoWidth: number, videoHeight: number, stageWidth: number, stageHeight: number) {
+    if (!videoWidth || !videoHeight || !stageWidth || !stageHeight) return "unknown";
+
+    const videoAspect = videoWidth / videoHeight;
+    const stageAspect = stageWidth / stageHeight;
+    const delta = Math.abs(videoAspect - stageAspect);
+    if (delta < 0.01) return "0%";
+
+    if (videoAspect > stageAspect) {
+        const cropped = (1 - stageAspect / videoAspect) * 100;
+        return `${formatNumber(cropped, 1)}% sides`;
+    }
+
+    const cropped = (1 - videoAspect / stageAspect) * 100;
+    return `${formatNumber(cropped, 1)}% top/bottom`;
+}
+
 function HelperPanel({
     metrics,
+    cameraMetrics,
+    displayMetrics,
     cameraStatus,
     segmentationStatus,
     titlesStatus,
@@ -238,6 +269,8 @@ function HelperPanel({
     onResetFallSpeedMultiplier,
 }: {
     metrics: HelperMetrics;
+    cameraMetrics: CameraMetrics;
+    displayMetrics: DisplayMetrics;
     cameraStatus: CameraStatus;
     segmentationStatus: SegmentationStatus;
     titlesStatus: TitlesStatus;
@@ -266,6 +299,15 @@ function HelperPanel({
         ["Frequency", `${formatNumber(letterSettings.lettersPerSecond, 0)} /s`],
         ["Canvas ratio", formatNumber(letterSettings.canvasAspectRatio, 3)],
         ["Palette", paletteForSettings(letterSettings).join(" ")],
+        ["Viewport", `${displayMetrics.viewportWidth} x ${displayMetrics.viewportHeight}`],
+        ["DPR", formatNumber(displayMetrics.devicePixelRatio, 2)],
+        ["Stage", `${width} x ${height}`],
+        ["Stage pixels", `${formatNumber(width * height / 1_000_000, 2)} MP`],
+        ["Camera video", formatResolution(cameraMetrics.videoWidth, cameraMetrics.videoHeight)],
+        ["Camera track", formatResolution(cameraMetrics.trackWidth, cameraMetrics.trackHeight)],
+        ["Camera FPS", cameraMetrics.frameRate ? formatNumber(cameraMetrics.frameRate, 1) : "unknown"],
+        ["Camera aspect", cameraMetrics.aspectRatio ? formatNumber(cameraMetrics.aspectRatio, 3) : "unknown"],
+        ["Video crop", formatVideoCrop(cameraMetrics.videoWidth, cameraMetrics.videoHeight, width, height)],
         ["BodyPix FPS", formatNumber(metrics.segmentationFps)],
         ["BodyPix inference", `${formatNumber(metrics.segmentMs)} ms`],
         ["Mask update", `${formatNumber(metrics.maskMs)} ms`],
@@ -275,7 +317,6 @@ function HelperPanel({
         ["Output stride", String(bodyPixSettings.outputStride)],
         ["Person detected", metrics.hasPeople ? "yes" : "no"],
         ["Titles queued", String(queueLength)],
-        ["Stage", `${width} x ${height}`],
         ["Camera", cameraStatus],
         ["Body model", segmentationStatus],
         ["Titles", titlesStatus],
@@ -433,12 +474,26 @@ export default function VideoDisplay() {
     const [torrentSettings, setTorrentSettings] = useState<TorrentSettings>(DEFAULT_TORRENT_SETTINGS);
     const [width, setWidth] = useState<number>(640);
     const [height, setHeight] = useState<number>(480);
+    const [cameraMetrics, setCameraMetrics] = useState<CameraMetrics>({
+        videoWidth: 0,
+        videoHeight: 0,
+    });
+    const [displayMetrics, setDisplayMetrics] = useState<DisplayMetrics>({
+        viewportWidth: 0,
+        viewportHeight: 0,
+        devicePixelRatio: 1,
+    });
 
     // Recalculate canvas size to max-fit inside the viewport using the configured stage aspect ratio.
     useEffect(() => {
         function fitToViewport() {
             const availW = Math.max(320, window.innerWidth - MARGIN_PX * 2);
             const availH = Math.max(240, window.innerHeight - MARGIN_PX * 2);
+            setDisplayMetrics({
+                viewportWidth: window.innerWidth,
+                viewportHeight: window.innerHeight,
+                devicePixelRatio: window.devicePixelRatio || 1,
+            });
             const aspect = torrentSettings.canvasAspectRatio;
             if (availW / availH > aspect) {
                 // height-constrained
@@ -820,7 +875,9 @@ export default function VideoDisplay() {
                         ref={videoRef}
                         width={width}
                         height={height}
+                        captureAspectRatio={torrentSettings.canvasAspectRatio}
                         onStatusChange={handleCameraStatus}
+                        onMetricsChange={setCameraMetrics}
                     />
                     {cameraStatus === "ready" && (
                         <SegmentationOverlay
@@ -859,6 +916,8 @@ export default function VideoDisplay() {
                 {showHelperPanel && (
                     <HelperPanel
                         metrics={helperMetrics}
+                        cameraMetrics={cameraMetrics}
+                        displayMetrics={displayMetrics}
                         cameraStatus={cameraStatus}
                         segmentationStatus={segmentationStatus}
                         titlesStatus={titlesStatus}

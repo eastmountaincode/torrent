@@ -108,7 +108,8 @@ export default function AdminPage() {
         };
     }, []);
 
-    const canSave = status !== "saving";
+    const settingsLoadedFromD1 = source === "d1" && status !== "loading" && status !== "error";
+    const canSave = settingsLoadedFromD1 && status !== "saving";
     const palette = paletteForSettings(settings);
 
     const groupedDefinitions = useMemo(() => ({
@@ -219,7 +220,7 @@ export default function AdminPage() {
                             disabled={!canSave}
                             onClick={saveSettings}
                         >
-                            {status === "saving" ? "Saving" : "Save"}
+                            {status === "saving" ? "Saving" : status === "loading" ? "Loading" : "Save"}
                         </button>
                     </div>
                 </header>
